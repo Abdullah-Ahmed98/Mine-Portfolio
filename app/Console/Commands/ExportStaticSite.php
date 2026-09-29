@@ -297,26 +297,43 @@ class ExportStaticSite extends Command
     }
 
     /**
-     * Turn the two generated URLs into paths that resolve on a static host.
+     * Make every URL on the page resolve on whatever host serves the files.
      *
-     * asset() and Storage::url() already emit root-relative paths and need
-     * nothing. Only route() calls, which are absolute, need rewriting.
+     * The export does not know the final address, and guessing it is what broke
+     * the first deploy: the build was made for a domain that turned out to belong
+     * to somebody else, so the page loaded its CSS and images from their site
+     * while the real files sat unused on the server this build was uploaded to.
+     *
+     * Reducing the base URL to a root-relative path removes the guesswork
+     * entirely. A page served from any host, on any domain, with no rebuild,
+     * requests its own files. Only the two tags that are meaningless without a
+     * host, canonical and og:url, are left absolute, and those come from the
+     * --url option being passed at build time.
      */
     private function rewriteUrls(string $html): string
     {
-        $base = rtrim($this->option('url') ?: config('app.url'), '/');
-
-        $replacements = [
+        $base = $this->baseUrl();
+        $canonical = [
             e(route('resume')) => '/resume.pdf',
             route('resume') => '/resume.pdf',
         ];
 
         if ($endpoint = $this->formspreeEndpoint()) {
-            $replacements[e(route('contact.store'))] = $endpoint;
-            $replacements[route('contact.store')] = $endpoint;
+            $canonical[e(route('contact.store'))] = $endpoint;
+            $canonical[route('contact.store')] = $endpoint;
         }
 
-        return strtr($html, $replacements);
+        /*
+         * Applied first, and only where the base URL is a whole host prefix, so
+         * the form endpoint and the sitemap entry keep their own address. Leaving
+         * them absolute is deliberate: they point at a third party, not at this
+         * site's own files.
+         */
+        $html = strtr($html, $canonical);
+
+        // The leading slash is kept so the path stays root-relative rather than
+        // becoming relative to whatever directory the page happens to sit in.
+        return str_replace($base.'/', '/', $html);
     }
 
     /**
