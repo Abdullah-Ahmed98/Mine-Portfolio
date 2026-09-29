@@ -118,4 +118,76 @@ class SetAdminPasswordTest extends TestCase
 
         $this->assertTrue(Hash::check('FreshPassw0rd2026', $user->fresh()->password));
     }
+
+    public function test_it_can_also_change_the_email(): void
+    {
+        $user = $this->admin();
+
+        $this->artisan('admin:password', [
+            '--email' => $user->email,
+            '--new-email' => 'real.address@gmail.com',
+        ])
+            ->expectsQuestion('New password', 'FreshPassw0rd2026')
+            ->expectsQuestion('Confirm password', 'FreshPassw0rd2026')
+            ->assertSuccessful();
+
+        $user->refresh();
+
+        $this->assertSame('real.address@gmail.com', $user->email);
+        $this->assertTrue(Hash::check('FreshPassw0rd2026', $user->password));
+    }
+
+    public function test_it_rejects_a_new_email_that_is_not_an_email_address(): void
+    {
+        $user = $this->admin();
+
+        $this->artisan('admin:password', [
+            '--email' => $user->email,
+            '--new-email' => 'not-an-address',
+        ])
+            ->expectsQuestion('New password', 'FreshPassw0rd2026')
+            ->expectsQuestion('Confirm password', 'FreshPassw0rd2026')
+            ->assertFailed();
+
+        $user->refresh();
+
+        $this->assertSame('admin@portfolio.test', $user->email);
+    }
+
+    public function test_it_rejects_a_new_email_already_used_by_another_account(): void
+    {
+        $user = $this->admin();
+        User::factory()->create(['email' => 'taken@gmail.com']);
+
+        $this->artisan('admin:password', [
+            '--email' => $user->email,
+            '--new-email' => 'taken@gmail.com',
+        ])
+            ->expectsQuestion('New password', 'FreshPassw0rd2026')
+            ->expectsQuestion('Confirm password', 'FreshPassw0rd2026')
+            ->assertFailed();
+
+        $user->refresh();
+
+        $this->assertSame('admin@portfolio.test', $user->email);
+    }
+
+    /**
+     * A rejected address must not leave the password already swapped, or the
+     * account ends up reachable only by an address the user no longer knows.
+     */
+    public function test_a_rejected_email_leaves_the_password_untouched(): void
+    {
+        $user = $this->admin();
+
+        $this->artisan('admin:password', [
+            '--email' => $user->email,
+            '--new-email' => 'not-an-address',
+        ])
+            ->expectsQuestion('New password', 'FreshPassw0rd2026')
+            ->expectsQuestion('Confirm password', 'FreshPassw0rd2026')
+            ->assertFailed();
+
+        $this->assertTrue(Hash::check(self::CURRENT, $user->fresh()->password));
+    }
 }

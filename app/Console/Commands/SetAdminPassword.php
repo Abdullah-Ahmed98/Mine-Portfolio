@@ -6,6 +6,7 @@ use App\Models\User;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password as PasswordRule;
 
 /**
@@ -22,12 +23,13 @@ class SetAdminPassword extends Command
      * @var string
      */
     protected $signature = 'admin:password
-        {--email= : Account to update. Defaults to the only user, or asks when there are several.}';
+        {--email= : Account to update. Defaults to the only user, or asks when there are several.}
+        {--new-email= : Also change the account\'s email address to this one.}';
 
     /**
      * @var string
      */
-    protected $description = 'Set a new password for an admin account';
+    protected $description = 'Set a new password, and optionally a new email, for an admin account';
 
     public function handle(): int
     {
@@ -51,7 +53,13 @@ class SetAdminPassword extends Command
          * the cast hashes it on save. Assigning a hash here instead would be
          * hashed a second time and lock the account out.
          */
-        $user->forceFill(['password' => $password])->save();
+        $user->forceFill(['password' => $password]);
+
+        if (! $this->applyNewEmail($user)) {
+            return self::FAILURE;
+        }
+
+        $user->save();
 
         $this->newLine();
         $this->components->info('Password updated.');
@@ -59,6 +67,52 @@ class SetAdminPassword extends Command
         $this->components->twoColumnDetail('Stored as', 'bcrypt hash; the plaintext was not written anywhere');
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Move the account to a different address, so the login no longer depends on
+     * a placeholder like admin@portfolio.test.
+     *
+     * Nothing is saved until the password has also passed its checks, so a bad
+     * address here cannot leave the account half-updated.
+     */
+    private function applyNewEmail(User $user): bool
+    {
+        $new = trim((string) $this->option('new-email'));
+
+        if ($new === '') {
+            return true;
+        }
+
+        $validator = Validator::make(
+            ['email' => $new],
+            [
+                'email' => [
+                    'required',
+                    'email',
+                    // Unique across every account except the one being edited, so
+                    // re-saving the same address is not treated as a collision.
+                    Rule::unique('users', 'email')->ignore($user->id),
+                ],
+            ],
+            ['email.unique' => 'Another account already uses that email address.']
+        );
+
+        if ($validator->fails()) {
+            foreach ($validator->errors()->all() as $message) {
+                $this->components->error($message);
+            }
+
+            return false;
+        }
+
+        $previous = $user->email;
+
+        $user->forceFill(['email' => $new]);
+
+        $this->components->twoColumnDetail('Email', "{$previous} -> {$new}");
+
+        return true;
     }
 
     private function resolveUser(): ?User
