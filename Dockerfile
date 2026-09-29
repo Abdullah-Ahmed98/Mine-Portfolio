@@ -43,6 +43,11 @@ RUN install-php-extensions \
 
 WORKDIR /app
 
+# The image's own Caddyfile already sets root to public/ and enables php_server,
+# which serves assets straight from disk and only falls through to index.php for
+# real routes. SERVER_ROOT only overrides the path it serves from.
+ENV SERVER_ROOT=/app/public
+
 # Uploads default to 2MB, which quietly truncates larger screenshots. Raised
 # alongside post_max_size because that, not upload_max_filesize, is what the
 # web server enforces.
@@ -82,6 +87,10 @@ RUN composer dump-autoload --optimize --no-dev \
 
 RUN chown -R www-data:www-data storage bootstrap/cache
 
-# php artisan migrate is NOT run here. It runs in the start command, so that a
+# No CMD is set on purpose. The image's default entrypoint runs
+# `frankenphp run --config /etc/frankenphp/Caddyfile`, which is the configuration
+# upstream ships and tests. Overriding it here is how a Caddyfile gets silently
+# ignored.
+#
+# php artisan migrate is NOT run here either. It runs in the start command, so a
 # failed migration stops the boot loudly instead of shipping a half-built image.
-CMD [ "frankenphp", "run", "--config", "/etc/frankenphp/frankenphp.conf" ]
