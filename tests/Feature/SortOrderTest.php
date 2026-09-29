@@ -10,11 +10,24 @@ use App\Models\SkillCategory;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class SortOrderTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        /*
+         * This class posts a real upload at the admin endpoint, which writes
+         * through MediaService. Without the fake it lands in the real public
+         * disk, where the static exporter would copy it into the next upload.
+         */
+        Storage::fake('public');
+    }
 
     public function test_an_empty_list_starts_at_zero(): void
     {

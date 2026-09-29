@@ -306,4 +306,132 @@ class MotionDesignTest extends TestCase
             'An element that has arrived should stop being watched.',
         );
     }
+
+    /* --------------------------------------------------------- media reveals */
+
+    /**
+     * The declaration block belonging to a selector, and nothing else.
+     *
+     * Written by hand so a rule that quietly moves onto a child, the way the
+     * media wipe used to move onto the wrong element, shows up as a failure
+     * rather than as a rule that still exists somewhere in the file.
+     *
+     * @return string
+     */
+    private function declarationsFor(string $selector)
+    {
+        $pattern = '/(?:^|\})\s*'.preg_quote($selector, '/').'\s*\{([^}]*)\}/m';
+
+        preg_match_all($pattern, $this->css(), $matches);
+
+        return implode("\n", $matches[1]);
+    }
+
+    /**
+     * A clip-path counts towards an element's intersection rect, so clipping the
+     * box that IntersectionObserver is watching leaves it with no area left to
+     * report. The observer therefore never sees it, the class that would
+     * un-clip it is never added, and the effect cannot undo itself: every
+     * project image stays hidden, on every device, with no way back.
+     *
+     * This shipped that way and the whole portfolio looked empty on a phone.
+     * The box is hidden with opacity instead, which intersection maths ignores.
+     */
+    public function test_the_observed_media_box_is_hidden_with_opacity_and_never_clipped(): void
+    {
+        $box = $this->declarationsFor('.js [data-media-reveal]');
+
+        $this->assertNotSame('', $box, 'The observed box should still have a hidden state.');
+
+        $this->assertMatchesRegularExpression(
+            '/opacity:\s*0;/',
+            $box,
+            'The box should start hidden, so the reveal still has something to do.',
+        );
+
+        $this->assertStringNotContainsString(
+            'clip-path',
+            $box,
+            'Clipping the observed box empties its intersection rect, so the observer can never reveal it.',
+        );
+
+        $this->assertMatchesRegularExpression(
+            '/\.js \[data-media-reveal\]\.is-visible\s*\{\s*opacity: 1;/s',
+            $this->css(),
+            'Adding the class has to make the box visible again.',
+        );
+    }
+
+    /**
+     * The wipe is the design, so it stays — on the image, which nothing is
+     * observing, rather than on the box, which is.
+     */
+    public function test_the_wipe_is_clipped_onto_the_image_rather_than_the_observed_box(): void
+    {
+        $css = $this->css();
+
+        $this->assertMatchesRegularExpression(
+            '/\.js \[data-media-reveal\]\s*>\s*img\s*\{\s*clip-path:\s*inset\(0 0 100% 0\)/s',
+            $css,
+            'The image should start wiped away from the bottom.',
+        );
+
+        $this->assertMatchesRegularExpression(
+            '/\.js \[data-media-reveal\]\.is-visible\s*>\s*img\s*\{\s*clip-path:\s*inset\(0 0 0 0\)/s',
+            $css,
+            'Revealing the box should open the wipe on the image.',
+        );
+    }
+
+    public function test_media_reveals_are_undone_under_reduced_motion(): void
+    {
+        $css = $this->css();
+
+        $reduced = strpos($css, '@media (prefers-reduced-motion: reduce)');
+        $this->assertNotFalse($reduced, 'There should be a reduced-motion block.');
+
+        $block = substr($css, $reduced);
+
+        $this->assertMatchesRegularExpression(
+            '/\[data-media-reveal\]\s*\{\s*opacity: 1;/s',
+            $block,
+            'Reduced-motion visitors must never be left with hidden content.',
+        );
+
+        $this->assertMatchesRegularExpression(
+            '/\[data-media-reveal\]\s*>\s*img\s*\{\s*clip-path: none;/s',
+            $block,
+            'The wipe lives on the image now, so that is what has to be undone.',
+        );
+    }
+
+    /**
+     * The observer is one callback deep, and the content it guards is the whole
+     * portfolio. A single missed callback must not be able to leave a project
+     * image hidden, so anything the visitor has already scrolled past is
+     * revealed regardless of what the observer reports.
+     */
+    public function test_media_the_visitor_has_scrolled_past_is_revealed_whatever_the_observer_says(): void
+    {
+        $motion = $this->motion();
+
+        $startup = strpos($motion, 'function initMediaReveals()');
+        $next = strpos($motion, '/* ------', $startup);
+        $body = substr($motion, $startup, $next - $startup);
+
+        $this->assertStringContainsString('IntersectionObserver', $body);
+        $this->assertStringContainsString('prefersReduced()', $body);
+
+        $this->assertStringContainsString(
+            "addEventListener('scroll', sweep",
+            $body,
+            'There should be a backstop that runs without the observer.',
+        );
+
+        $this->assertStringContainsString(
+            'getBoundingClientRect().bottom >= 0',
+            $body,
+            'The backstop should only rescue media that is already above the viewport.',
+        );
+    }
 }

@@ -221,6 +221,26 @@ function initMediaReveals() {
     );
 
     media.forEach((element) => observer.observe(element));
+
+    /*
+     * Backstop for the case the observer cannot report: an element the visitor
+     * has already scrolled past must never still be hidden, whatever the
+     * observer thinks. One missed callback would otherwise leave a whole
+     * project invisible with no way to bring it back, and the reader would have
+     * no reason to suspect the image was there at all.
+     */
+    const sweep = () => {
+        media.forEach((element) => {
+            if (element.classList.contains('is-visible')) return;
+            if (element.getBoundingClientRect().bottom >= 0) return;
+
+            element.classList.add('is-visible');
+            observer.unobserve(element);
+        });
+    };
+
+    window.addEventListener('scroll', sweep, { passive: true });
+    window.addEventListener('load', sweep, { once: true });
 }
 
 /* ------------------------------------------------------------ slide reveals */
