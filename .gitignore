@@ -29,3 +29,7 @@ Thumbs.db
 # Local SQLite database - contains the admin user and is machine-specific
 /database/*.sqlite
 /database/*.sqlite-journal
+
+# Agent tooling, not part of the site
+/.claude/
+/.agents/
