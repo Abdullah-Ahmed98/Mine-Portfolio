@@ -14,6 +14,20 @@ class HomeController extends Controller
 {
     public function __invoke(PortfolioService $portfolio): View
     {
+        return view('pages.single', $this->pageData($portfolio));
+    }
+
+    /**
+     * Everything the single page renders from.
+     *
+     * Extracted so the static exporter can build the identical page rather than
+     * keeping its own copy of this list, which would drift the moment a section
+     * is added here.
+     *
+     * @return array<string, mixed>
+     */
+    public function pageData(PortfolioService $portfolio): array
+    {
         $profile = $portfolio->profile();
         $showcase = $portfolio->showcaseSections();
         $latestWork = $portfolio->latestWork();
@@ -21,7 +35,7 @@ class HomeController extends Controller
         $experiences = $portfolio->experiences();
         $education = $portfolio->education();
 
-        return view('pages.single', [
+        return [
             'profile' => $profile,
             'highlights' => $profile->highlights,
             'showcase' => $showcase,
@@ -49,6 +63,6 @@ class HomeController extends Controller
                 Seo::defaultDescription(),
                 $profile->profileImageUrl(),
             ),
-        ]);
+        ];
     }
 }
